@@ -12,8 +12,7 @@ import plotly.graph_objects as go
 # Cached data fetchers
 @st.cache_data(ttl=300, show_spinner=False)
 def fetch_kraken_ohlc(pair: str = "ETHUSD", interval_min: int = 1440, days: int = 365) -> pd.DataFrame:
-    """Fetch OHLC from Kraken public API (no key)."""
-    since_secs = int((datetime.now(timezone.utc) - timedelta(days=int(days)+2)).timestamp())
+    since_secs = int((datetime.now(timezone.utc) - timedelta(days=int(days) + 2)).timestamp())
     url = "https://api.kraken.com/0/public/OHLC"
     params = {"pair": pair, "interval": interval_min, "since": since_secs}
     r = requests.get(url, params=params, timeout=20)
@@ -23,14 +22,23 @@ def fetch_kraken_ohlc(pair: str = "ETHUSD", interval_min: int = 1440, days: int 
     key = next((k for k in result.keys() if k != "last"), None)
     if not key:
         raise RuntimeError(f"Kraken response malformed: {data}")
-    # rows: [time, open, high, low, close, vwap, volume, count]
+
     df = pd.DataFrame(result[key], columns=["time","open","high","low","close","vwap","volume","count"])
     df["time"] = pd.to_datetime(df["time"], unit="s", utc=True)
     for c in ["open","high","low","close","vwap","volume","count"]:
         df[c] = pd.to_numeric(df[c], errors="coerce")
     df = df.set_index("time").sort_index()
-    cutoff = pd.Timestamp.utcnow().tz_localize("UTC") - pd.Timedelta(days=days)
-    return df.loc[df.index >= cutoff][["open","high","low","close","volume"]]
+
+    # --- FIX: build an aware UTC cutoff and ensure index is UTC-aware ---
+    if df.index.tz is None:
+        df.index = df.index.tz_localize("UTC")
+    else:
+        df.index = df.index.tz_convert("UTC")
+    now_utc = pd.Timestamp.now(tz="UTC")
+    cutoff = now_utc - pd.Timedelta(days=int(days))
+    # --------------------------------------------------------------------
+    return df.loc[df.index >= cutoff, ["open","high","low","close","volume"]]
+
 
 @st.cache_data(ttl=300, show_spinner=False)
 def fetch_coingecko_ohlc(days: int = 365, vs="usd", demo_key: str = "") -> pd.DataFrame:
@@ -134,7 +142,6 @@ def _predict_card(pred: Dict[str, Any], last_close: float):
 # Public entry
 def render_tab(api_url: str, provider: str, days: int, cg_demo_key: str, refresh: bool):
     st.markdown("### Ethereum (ETH)")
-    st.caption("Historical OHLC from Kraken or CoinGecko, plus your FastAPI next-day HIGH prediction.")
 
     # Fetch OHLC
     try:

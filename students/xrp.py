@@ -109,10 +109,13 @@ def render_tab(api_url: str, provider: str, days: int, cg_demo_key: str, refresh
     c4.metric("Low", fmt_usd(latest["low"]))
     c5.metric("Close", fmt_usd(latest["close"]))
 
-    st.caption(
-        f"Volume: {int(latest.get('volume') or 0):,} • "
-        f"Quote Volume: {fmt_usd(latest.get('quote_volume') or 0)}"
-    )
+    vol_val = latest.get("volume")
+    qv_val  = latest.get("quote_volume")
+    
+    vol_txt = f"{int(vol_val):,}" if (vol_val is not None and not pd.isna(vol_val)) else "—"
+    qv_txt  = fmt_usd(qv_val) if (qv_val is not None and not pd.isna(qv_val)) else "—"
+    
+    st.caption(f"Volume: {vol_txt} • Quote Volume: {qv_txt}")
 
     # 4. Line Chart
     st.subheader("Close price – time series")

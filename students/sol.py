@@ -7,7 +7,6 @@ import pandas as pd
 import streamlit as st
 from datetime import datetime, timezone
 
-# Import helper functions if available
 from services import fetch_cc_daily, build_query_url, fetch_sol_news_rss
 
 
@@ -113,10 +112,13 @@ def render_tab(api_url: str, provider: str, days: int, cg_demo_key: str, refresh
     c4.metric("Low", fmt_usd(latest["low"]))
     c5.metric("Close", fmt_usd(latest["close"]))
 
-    st.caption(
-        f"Volume: {int(latest.get('volume') or 0):,} • "
-        f"Market Cap: {fmt_usd(latest.get('marketCap') or 0)}"
-    )
+    vol_val = latest.get("volume")
+    mc_val  = latest.get("marketCap")
+    
+    vol_txt = f"{int(vol_val):,}" if (vol_val is not None and not pd.isna(vol_val)) else "—"
+    mc_txt  = fmt_usd(mc_val) if (mc_val is not None and not pd.isna(mc_val)) else "—"
+    
+    st.caption(f"Volume: {vol_txt} • Market Cap: {mc_txt}")
 
   
     st.subheader("Closing Price Trend")
