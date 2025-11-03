@@ -48,7 +48,7 @@ eth_api = st.sidebar.text_input("ETH FastAPI (your service)", value=eth_api_defa
 
 # Teammates leave blank by default; they’ll fill their own
 btc_api = st.sidebar.text_input("BTC FastAPI (teammate)", value=os.getenv("BTC_API_URL", ""))
-xrp_api = st.sidebar.text_input("XRP FastAPI (teammate)", value=os.getenv("XRP_API_URL", ""))
+xrp_api = st.sidebar.text_input("XRP FastAPI (teammate)", value=os.getenv("XRP_API_URL", "https://three6120-at3-api-muhammad-iqbal-latest.onrender.com"))
 sol_api = st.sidebar.text_input("SOL FastAPI (teammate)", value=os.getenv("SOL_API_URL", ""))
 
 st.sidebar.markdown("---")
