@@ -67,10 +67,10 @@ streamlit run app/main.py
 - Prefill the sidebar inputs with environment variables:
 
 ```bash
-export ETH_API_URL="https://<your-eth-api>.onrender.com"
-export BTC_API_URL="https://<teammate-btc-api>.onrender.com"
-export XRP_API_URL="https://<teammate-xrp-api>.onrender.com"
-export SOL_API_URL="https://<teammate-sol-api>.onrender.com"
+export ETH_API_URL="https://advmla-finalast-25238736-latest.onrender.com"
+export BTC_API_URL="https://aml-at3-fastapi-btc.onrender.com"
+export XRP_API_URL="https://three6120-at3-api-muhammad-iqbal-latest.onrender.com"
+export SOL_API_URL="https://aml-at3-group24-experiments.onrender.com"
 
 # Optional CoinGecko demo key
 export CG_DEMO_KEY="<demo-key>"
@@ -85,10 +85,10 @@ docker build -t crypto-streamlit:latest .
 
 # run (exposes 8501)
 docker run --rm -p 8501:8501 \
-  -e ETH_API_URL="https://<your-eth-api>.onrender.com" \
-  -e BTC_API_URL="https://<btc-api>.onrender.com" \
-  -e XRP_API_URL="https://<xrp-api>.onrender.com" \
-  -e SOL_API_URL="https://<sol-api>.onrender.com" \
+  -e ETH_API_URL="https://advmla-finalast-25238736-latest.onrender.com" \
+  -e BTC_API_URL="https://aml-at3-fastapi-btc.onrender.com" \
+  -e XRP_API_URL="https://three6120-at3-api-muhammad-iqbal-latest.onrender.com" \
+  -e SOL_API_URL="https://aml-at3-group24-experiments.onrender.com" \
   -e CG_DEMO_KEY="<demo-key>" \
   crypto-streamlit:latest
 ```
