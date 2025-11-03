@@ -9,9 +9,6 @@ import requests
 import streamlit as st
 import plotly.graph_objects as go
 
-# ===============================
-# Data fetchers (cached)
-# ===============================
 @st.cache_data(ttl=300, show_spinner=False)
 def fetch_kraken_ohlc(pair: str = "BTCUSD", interval_min: int = 1440, days: int = 365) -> pd.DataFrame:
     """BTC OHLC from Kraken (no key)."""
@@ -50,13 +47,10 @@ def fetch_coingecko_ohlc(days: int = 365, vs="usd", demo_key: str = "") -> pd.Da
         "low":   df["low"].resample("1D").min(),
         "close": df["close"].resample("1D").last()
     })
-    daily["volume"] = np.nan         # endpoint doesn’t provide volume
+    daily["volume"] = np.nan         
     daily["quote_volume"] = np.nan
     return daily.dropna(how="all")
 
-# ===============================
-# API helpers
-# ===============================
 def _api_base(api_url: str) -> Optional[str]:
     api_url = (api_url or "").strip()
     if not api_url:
@@ -80,7 +74,6 @@ def predict_nextday_high(api_url: str) -> Optional[Dict[str, Any]]:
     base = _api_base(api_url)
     if not base:
         return None
-    # try /predict/btc then /predict
     for path in ("/predict/btc", "/predict"):
         try:
             r = requests.get(base + path, timeout=25)
@@ -90,9 +83,6 @@ def predict_nextday_high(api_url: str) -> Optional[Dict[str, Any]]:
             continue
     return None
 
-# ===============================
-# UI blocks
-# ===============================
 def _today_metrics(df: pd.DataFrame):
     last = df.dropna().tail(1)
     if last.empty:
@@ -106,7 +96,6 @@ def _today_metrics(df: pd.DataFrame):
     c[2].metric("High",  f"${float(row['high']):,.6f}")
     c[3].metric("Low",   f"${float(row['low']):,.6f}")
     c[4].metric("Close", f"${float(row['close']):,.6f}")
-    # optional volumes line
     vol = row.get("volume", np.nan)
     qvol = row.get("quote_volume", np.nan)
     st.caption(f"Volume: {vol:,.0f} • Quote Volume: {qvol:,.0f}" if pd.notna(vol) or pd.notna(qvol) else "Volume data not available for this provider.")
@@ -151,14 +140,10 @@ def _forecast_card(pred: Dict[str, Any], last_close: float):
     with st.expander("Model details (raw)"):
         st.json(payload)
 
-# ===============================
-# Public tab entry
-# ===============================
 def render_tab(api_url: str, provider: str, days: int, cg_demo_key: str, refresh: bool):
     st.markdown("## Bitcoin (BTC)")
     st.caption("Historical OHLC + next-day HIGH prediction via your FastAPI.")
 
-    # --- Health check
     with st.container():
         st.subheader("Health check")
         base = _api_base(api_url) or ""
@@ -171,7 +156,6 @@ def render_tab(api_url: str, provider: str, days: int, cg_demo_key: str, refresh
             else:
                 st.warning("Health endpoint not found. Add /health (or /ping) on your API.")
 
-    # --- Fetch OHLC
     try:
         if provider.startswith("Kraken"):
             df = fetch_kraken_ohlc(pair="BTCUSD", interval_min=1440, days=days)
@@ -186,14 +170,11 @@ def render_tab(api_url: str, provider: str, days: int, cg_demo_key: str, refresh
         st.error(f"Failed to fetch OHLC: {e}")
         return
 
-    # --- Today’s price (metrics)
     st.subheader("Today’s price (latest daily candle)")
     last_close = _today_metrics(df)
 
-    # --- Close price line chart
     _close_line_chart(df, title="Close price — time series")
 
-    # --- Forecast (button-less; calls immediately if base is set)
     if base:
         pred = predict_nextday_high(base)
         if pred:
@@ -203,5 +184,4 @@ def render_tab(api_url: str, provider: str, days: int, cg_demo_key: str, refresh
     else:
         st.info("Enter a valid BTC FastAPI base URL in the sidebar.")
 
-    # --- Last 365 table
     _candles_table(df)
