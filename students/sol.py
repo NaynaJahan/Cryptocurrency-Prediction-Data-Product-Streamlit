@@ -60,10 +60,10 @@ def render_tab(api_url: str, provider: str, days: int, cg_demo_key: str, refresh
         if st.button("Ping /health", key="sol_health", use_container_width=True):
             ok, msg = _ping_health(api_url)
             if ok:
-                st.success("API reachable ✅")
+                st.success("API reachable")
                 st.code(msg)
             else:
-                st.error("Health check failed ❌")
+                st.error("Health check failed")
                 st.code(msg)
     with col_h2:
         st.caption(f"API base: `{api_url}`")
