@@ -1,31 +1,48 @@
-# students/sol.py
+# app/students/sol.py
 from __future__ import annotations
 
 import time
 import requests
+import numpy as np
 import pandas as pd
 import streamlit as st
-from datetime import datetime, timezone
 
-from services import fetch_cc_daily, build_query_url, fetch_sol_news_rss
+# Use the package facade (make sure services/__init__.py exports these)
+from services import fetch_cc_daily, fetch_sol_news_rss
 
+def fmt_int(x) -> str:
+    try:
+        v = float(x)
+        if pd.isna(v) or not np.isfinite(v):
+            return "0"
+        return f"{int(v):,}"
+    except Exception:
+        return "0"
+
+def safe_int(x) -> int:
+    try:
+        v = float(x)
+        if pd.isna(v) or not np.isfinite(v):
+            return 0
+        return int(v)
+    except Exception:
+        return 0
 
 def fmt_usd(x) -> str:
-    """Format numeric value as USD."""
     try:
-        return f"${float(x):,.6f}"
+        v = float(x)
+        if pd.isna(v) or not np.isfinite(v):
+            return "—"
+        return f"${v:,.6f}"
     except Exception:
         return "—"
 
-
 @st.cache_data(show_spinner=False)
 def load_market_data(days: int, refresh_flag: int) -> pd.DataFrame:
-    """Fetch daily OHLC market data for Solana."""
+    """Fetch daily OHLC market data for Solana via CoinDesk Index (cadli)."""
     return fetch_cc_daily(instrument="SOL-USD", market="cadli", limit=days)
 
-
 def _ping_health(api_url: str, timeout: int = 10) -> tuple[bool, str]:
-    """Check FastAPI /health endpoint."""
     try:
         r = requests.get(f"{api_url}/health", timeout=timeout)
         r.raise_for_status()
@@ -33,13 +50,11 @@ def _ping_health(api_url: str, timeout: int = 10) -> tuple[bool, str]:
     except Exception as e:
         return False, str(e)
 
-
 def render_tab(api_url: str, provider: str, days: int, cg_demo_key: str, refresh: bool):
-    """Render Solana (SOL) dashboard tab."""
     st.markdown("## Solana → Next Day High Price Prediction")
     refresh_flag = 1 if refresh else 0
 
-   
+    # Market data
     try:
         df = load_market_data(days=days, refresh_flag=refresh_flag)
     except Exception as e:
@@ -52,7 +67,7 @@ def render_tab(api_url: str, provider: str, days: int, cg_demo_key: str, refresh
 
     latest = df.iloc[-1]
 
-   
+    # Health
     st.subheader("API Health Check")
     col_h1, col_h2 = st.columns([1, 3])
     with col_h1:
@@ -69,16 +84,16 @@ def render_tab(api_url: str, provider: str, days: int, cg_demo_key: str, refresh
 
     st.divider()
 
-   
+    # Predict
     st.subheader("Predict Next-Day High Price")
     if st.button("Use Latest Price → /predict/solana", key="sol_predict", use_container_width=True):
         params = {
             "date": latest["timestamp"].date().isoformat(),
-            "open": float(latest.get("open") or 0),
-            "high": float(latest.get("high") or 0),
-            "low": float(latest.get("low") or 0),
+            "open":  float(latest.get("open")  or 0),
+            "high":  float(latest.get("high")  or 0),
+            "low":   float(latest.get("low")   or 0),
             "close": float(latest.get("close") or 0),
-            "volume": int(latest.get("volume") or 0),
+            "volume": safe_int(latest.get("volume")),
         }
         try:
             t0 = time.perf_counter()
@@ -103,28 +118,27 @@ def render_tab(api_url: str, provider: str, days: int, cg_demo_key: str, refresh
 
     st.divider()
 
-   
+    # Today’s candle
     st.subheader("Today’s Price (Latest Daily Candle)")
     c1, c2, c3, c4, c5 = st.columns(5)
     c1.metric("Date (UTC)", latest["timestamp"].date().isoformat())
-    c2.metric("Open", fmt_usd(latest["open"]))
-    c3.metric("High", fmt_usd(latest["high"]))
-    c4.metric("Low", fmt_usd(latest["low"]))
-    c5.metric("Close", fmt_usd(latest["close"]))
+    c2.metric("Open",  fmt_usd(latest.get("open")))
+    c3.metric("High",  fmt_usd(latest.get("high")))
+    c4.metric("Low",   fmt_usd(latest.get("low")))
+    c5.metric("Close", fmt_usd(latest.get("close")))
+    st.caption(
+        f"Volume: {fmt_int(latest.get('volume'))} • "
+        f"Market Cap: {fmt_usd(latest.get('marketCap') if 'marketCap' in latest else np.nan)}"
+    )
 
-    vol_val = latest.get("volume")
-    mc_val  = latest.get("marketCap")
-    
-    vol_txt = f"{int(vol_val):,}" if (vol_val is not None and not pd.isna(vol_val)) else "—"
-    mc_txt  = fmt_usd(mc_val) if (mc_val is not None and not pd.isna(mc_val)) else "—"
-    
-    st.caption(f"Volume: {vol_txt} • Market Cap: {mc_txt}")
-
-  
+    # Trend
     st.subheader("Closing Price Trend")
-    st.line_chart(df.set_index("timestamp")["close"], use_container_width=True)
+    try:
+        st.line_chart(df.set_index("timestamp")["close"], use_container_width=True)
+    except Exception as e:
+        st.warning(f"Could not render line chart ({e}).")
 
-  
+    # News
     st.subheader("Latest Solana News 📰")
     cols = st.columns([1, 2, 2])
     with cols[0]:
@@ -140,7 +154,7 @@ def render_tab(api_url: str, provider: str, days: int, cg_demo_key: str, refresh
                 query="Solana OR SOL crypto",
                 max_items=max_items,
                 within_days=14,
-                hl="en-US", gl="US", ceid="US:en"
+                hl="en-US", gl="US", ceid="US:en",
             )
 
         if not items:
@@ -154,22 +168,27 @@ def render_tab(api_url: str, provider: str, days: int, cg_demo_key: str, refresh
             with st.expander("Feed URL (debug)"):
                 st.code(feed_url)
 
-  
+    # Table (robust to missing optional columns)
     st.subheader(f"Last {len(df)} Daily Candles")
-    tbl = df.copy()
-    if hasattr(tbl["timestamp"].dt, "tz_convert"):
-        try:
-            tbl["timestamp"] = tbl["timestamp"].dt.tz_convert(None)
-        except Exception:
-            pass
+    try:
+        tbl = df.copy()
+        # ensure timestamp exists and is naive for display
+        if "timestamp" not in tbl.columns and tbl.index.name == "timestamp":
+            tbl = tbl.reset_index()
+        if getattr(tbl["timestamp"].dt, "tz", None) is not None:
+            try:
+                tbl["timestamp"] = tbl["timestamp"].dt.tz_convert(None)
+            except Exception:
+                tbl["timestamp"] = tbl["timestamp"].dt.tz_localize(None)
+        # add optional columns if missing
+        for c in ["marketCap"]:
+            if c not in tbl.columns:
+                tbl[c] = np.nan
+        cols = [c for c in ["timestamp","open","high","low","close","volume","marketCap"] if c in tbl.columns]
+        st.dataframe(tbl[cols], hide_index=True, use_container_width=True)
+    except Exception as e:
+        st.warning(f"Could not render candles table ({e}).")
 
-    st.dataframe(
-        tbl[["timestamp", "open", "high", "low", "close", "volume", "marketCap"]],
-        hide_index=True,
-        use_container_width=True,
-    )
-
-    
     st.divider()
     st.caption(
         "Data source: CoinDesk Index (cc) API via 'cadli' market • "

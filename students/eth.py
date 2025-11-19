@@ -1,7 +1,8 @@
+# app/students/eth.py
 from __future__ import annotations
-import math, time
+import time
 from datetime import datetime, timedelta, timezone
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, Optional
 
 import numpy as np
 import pandas as pd
@@ -9,7 +10,6 @@ import requests
 import streamlit as st
 import plotly.graph_objects as go
 
-# Cached data fetchers
 @st.cache_data(ttl=300, show_spinner=False)
 def fetch_kraken_ohlc(pair: str = "ETHUSD", interval_min: int = 1440, days: int = 365) -> pd.DataFrame:
     since_secs = int((datetime.now(timezone.utc) - timedelta(days=int(days) + 2)).timestamp())
@@ -29,20 +29,17 @@ def fetch_kraken_ohlc(pair: str = "ETHUSD", interval_min: int = 1440, days: int 
         df[c] = pd.to_numeric(df[c], errors="coerce")
     df = df.set_index("time").sort_index()
 
-    # --- FIX: build an aware UTC cutoff and ensure index is UTC-aware ---
+    # Ensure aware UTC index and compute cutoff
     if df.index.tz is None:
         df.index = df.index.tz_localize("UTC")
     else:
         df.index = df.index.tz_convert("UTC")
     now_utc = pd.Timestamp.now(tz="UTC")
     cutoff = now_utc - pd.Timedelta(days=int(days))
-    # --------------------------------------------------------------------
     return df.loc[df.index >= cutoff, ["open","high","low","close","volume"]]
-
 
 @st.cache_data(ttl=300, show_spinner=False)
 def fetch_coingecko_ohlc(days: int = 365, vs="usd", demo_key: str = "") -> pd.DataFrame:
-    """CoinGecko demo OHLC (hourly-sort of)"""
     url = "https://api.coingecko.com/api/v3/coins/ethereum/ohlc"
     params = {"vs_currency": vs, "days": str(days)}
     headers = {}
@@ -51,7 +48,6 @@ def fetch_coingecko_ohlc(days: int = 365, vs="usd", demo_key: str = "") -> pd.Da
     r = requests.get(url, params=params, headers=headers, timeout=20)
     r.raise_for_status()
     arr = r.json()
-    # arr rows: [timestamp_ms, open, high, low, close]
     df = pd.DataFrame(arr, columns=["ts","open","high","low","close"])
     df["time"] = pd.to_datetime(df["ts"], unit="ms", utc=True)
     df = df.set_index("time").sort_index().drop(columns=["ts"])
@@ -112,21 +108,21 @@ def _predict(api_url: str) -> Optional[Dict[str, Any]]:
         return None
 
 def _predict_card(pred: Dict[str, Any], last_close: float):
-    pred_usd = float(pred["prediction_usd"])
+    pred_usd = float(pred.get("prediction_usd", np.nan))
     as_of_utc = pred.get("as_of_utc", "")
-    # predict-for date is next UTC day after as_of
     try:
         dt = pd.to_datetime(as_of_utc, utc=True)
         pred_date = (dt + pd.Timedelta(days=1)).date().isoformat()
     except Exception:
         pred_date = "T+1"
-    delta = pred_usd - float(last_close)
-    delta_pct = 100.0 * delta / float(last_close) if last_close else 0.0
+    delta = pred_usd - float(last_close) if last_close == last_close else np.nan
+    delta_pct = 100.0 * delta / float(last_close) if last_close and last_close == last_close else np.nan
 
     st.subheader("📈 Model Forecast (ETH)")
     c1, c2, c3 = st.columns(3)
-    c1.metric("Predicted next-day HIGH", f"${pred_usd:,.2f}", f"{delta:+.2f} USD")
-    c2.metric("Δ vs last close (%)", f"{delta_pct:+.2f}%")
+    c1.metric("Predicted next-day HIGH", f"${pred_usd:,.2f}" if pd.notna(pred_usd) else "—",
+              f"{delta:+.2f} USD" if pd.notna(delta) else None)
+    c2.metric("Δ vs last close (%)", f"{delta_pct:+.2f}%" if pd.notna(delta_pct) else "—")
     c3.metric("Prediction date (UTC)", pred_date)
 
     with st.expander("Model details"):
@@ -139,11 +135,9 @@ def _predict_card(pred: Dict[str, Any], last_close: float):
             "source": pred.get("source")
         })
 
-# Public entry
 def render_tab(api_url: str, provider: str, days: int, cg_demo_key: str, refresh: bool):
     st.markdown("### Ethereum (ETH)")
 
-    # Fetch OHLC
     try:
         if provider.startswith("Kraken"):
             df = fetch_kraken_ohlc(pair="ETHUSD", interval_min=1440, days=days)
@@ -152,19 +146,15 @@ def render_tab(api_url: str, provider: str, days: int, cg_demo_key: str, refresh
             df = fetch_coingecko_ohlc(days=days, vs="usd", demo_key=cg_demo_key)
             src = "CoinGecko OHLC (resampled daily)"
         if refresh:
-            # bust caches on manual refresh
-            fetch_kraken_ohlc.clear()
-            fetch_coingecko_ohlc.clear()
+            fetch_kraken_ohlc.clear(); fetch_coingecko_ohlc.clear()
             st.experimental_rerun()
     except Exception as e:
         st.error(f"Failed to fetch OHLC: {e}")
         return
 
-    # Top metrics + chart
     _cards(df)
     _candlestick(df, title=f"ETH OHLC – last {days} days • source: {src}")
 
-    # Forecast card
     last_close = float(df["close"].dropna().iloc[-1]) if not df.empty else np.nan
     pred = _predict(api_url)
     if pred:

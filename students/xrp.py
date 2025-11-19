@@ -1,27 +1,46 @@
-# students/xrp.py
+# app/students/xrp.py
 from __future__ import annotations
 
 import time
-from datetime import datetime, timezone
 import requests
+import numpy as np
 import pandas as pd
 import streamlit as st
 
-# import function to fetch data
-from services import fetch_cc_daily, build_query_url, fetch_xrp_news_rss
+# Use the package facade (make sure services/__init__.py exports these)
+from services import fetch_cc_daily, fetch_xrp_news_rss
 
+def fmt_int(x) -> str:
+    try:
+        v = float(x)
+        if pd.isna(v) or not np.isfinite(v):
+            return "0"
+        return f"{int(v):,}"
+    except Exception:
+        return "0"
+
+def safe_int(x) -> int:
+    try:
+        v = float(x)
+        if pd.isna(v) or not np.isfinite(v):
+            return 0
+        return int(v)
+    except Exception:
+        return 0
 
 def fmt_usd(x) -> str:
     try:
-        return f"${float(x):,.6f}"
+        v = float(x)
+        if pd.isna(v) or not np.isfinite(v):
+            return "—"
+        return f"${v:,.6f}"
     except Exception:
         return "—"
 
-
 @st.cache_data(show_spinner=False)
 def load_market_data(days: int, refresh_flag: int) -> pd.DataFrame:
+    """Daily XRP OHLC via CoinDesk Index (cadli)."""
     return fetch_cc_daily(instrument="XRP-USD", market="cadli", limit=days)
-
 
 def _ping_health(api_url: str, timeout: int = 10) -> tuple[bool, str]:
     try:
@@ -31,12 +50,11 @@ def _ping_health(api_url: str, timeout: int = 10) -> tuple[bool, str]:
     except Exception as e:
         return False, str(e)
 
-
 def render_tab(api_url: str, provider: str, days: int, cg_demo_key: str, refresh: bool):
-    st.markdown("XRP -->  Next Day High Price Prediction")
+    st.markdown("## XRP → Next Day High Price Prediction")
     refresh_flag = 1 if refresh else 0
 
-    # Fetch market data once (used by prediction & displays)
+    # Load market data
     try:
         df = load_market_data(days=days, refresh_flag=refresh_flag)
     except Exception as e:
@@ -49,8 +67,8 @@ def render_tab(api_url: str, provider: str, days: int, cg_demo_key: str, refresh
 
     latest = df.iloc[-1]
 
-    # 1. API Health Cehck
-    st.subheader("Health check")
+    # Health
+    st.subheader("API Health Check")
     col_h1, col_h2 = st.columns([1, 3])
     with col_h1:
         if st.button("Ping /health", key="xrp_health", use_container_width=True):
@@ -66,16 +84,16 @@ def render_tab(api_url: str, provider: str, days: int, cg_demo_key: str, refresh
 
     st.divider()
 
-    # 2. API Predict Inference
-    st.subheader("Predict next-day High Price")
+    # Prediction call
+    st.subheader("Predict next-day HIGH price")
     if st.button("Use latest price → /predict", key="xrp_predict", use_container_width=True):
         params = {
-            "date": latest["timestamp"].date().isoformat(),
-            "open": float(latest.get("open") or 0),
-            "high": float(latest.get("high") or 0),
-            "low": float(latest.get("low") or 0),
+            "date":  latest["timestamp"].date().isoformat(),
+            "open":  float(latest.get("open")  or 0),
+            "high":  float(latest.get("high")  or 0),
+            "low":   float(latest.get("low")   or 0),
             "close": float(latest.get("close") or 0),
-            "volume": int(latest.get("volume") or 0),
+            "volume": safe_int(latest.get("volume")),
         }
         try:
             t0 = time.perf_counter()
@@ -100,32 +118,28 @@ def render_tab(api_url: str, provider: str, days: int, cg_demo_key: str, refresh
 
     st.divider()
 
-    # 3. Today's Price
+    # Today’s price metrics
     st.subheader("Today’s price (latest daily candle)")
     c1, c2, c3, c4, c5 = st.columns(5)
     c1.metric("Date (UTC)", latest["timestamp"].date().isoformat())
-    c2.metric("Open", fmt_usd(latest["open"]))
-    c3.metric("High", fmt_usd(latest["high"]))
-    c4.metric("Low", fmt_usd(latest["low"]))
-    c5.metric("Close", fmt_usd(latest["close"]))
-
-    vol_val = latest.get("volume")
-    qv_val  = latest.get("quote_volume")
-    
-    vol_txt = f"{int(vol_val):,}" if (vol_val is not None and not pd.isna(vol_val)) else "—"
-    qv_txt  = fmt_usd(qv_val) if (qv_val is not None and not pd.isna(qv_val)) else "—"
-    
-    st.caption(f"Volume: {vol_txt} • Quote Volume: {qv_txt}")
-
-    # 4. Line Chart
-    st.subheader("Close price – time series")
-    st.line_chart(
-        df.set_index("timestamp")["close"],
-        use_container_width=True,
+    c2.metric("Open",  fmt_usd(latest.get("open")))
+    c3.metric("High",  fmt_usd(latest.get("high")))
+    c4.metric("Low",   fmt_usd(latest.get("low")))
+    c5.metric("Close", fmt_usd(latest.get("close")))
+    st.caption(
+        f"Volume: {fmt_int(latest.get('volume'))} • "
+        f"Quote Volume: {fmt_usd(latest.get('quote_volume') if 'quote_volume' in latest else np.nan)}"
     )
-    
-    # 5. Get latest news related XRP from Google RSS
-    st.subheader("Latest XRP news")
+
+    # Close line
+    st.subheader("Close price – time series")
+    try:
+        st.line_chart(df.set_index("timestamp")["close"], use_container_width=True)
+    except Exception as e:
+        st.warning(f"Could not render line chart ({e}).")
+
+    # News
+    st.subheader("Latest XRP News 📰")
     cols = st.columns([1, 2, 2])
     with cols[0]:
         do_fetch = st.button("Fetch headlines", use_container_width=True, key="xrp_news_btn")
@@ -139,8 +153,8 @@ def render_tab(api_url: str, provider: str, days: int, cg_demo_key: str, refresh
             items, feed_url = fetch_xrp_news_rss(
                 query="XRP OR Ripple",
                 max_items=max_items,
-                within_days=14,    # set None to disable time filtering
-                hl="en-US", gl="US", ceid="US:en"
+                within_days=14,
+                hl="en-US", gl="US", ceid="US:en",
             )
 
         if not items:
@@ -154,29 +168,27 @@ def render_tab(api_url: str, provider: str, days: int, cg_demo_key: str, refresh
             with st.expander("Feed URL (debug)"):
                 st.code(feed_url)
 
-    # 6. Last N days Table
-    st.subheader(f"Last {len(df)} daily candles")
-    tbl = df.copy()
-    # Show naive timestamps for a cleaner table (remove tz if present)
-    if hasattr(tbl["timestamp"].dt, "tz_convert"):
-        try:
-            tbl["timestamp"] = tbl["timestamp"].dt.tz_convert(None)
-        except Exception:
-            # If already naive or tz-unaware, ignore
-            pass
+    # Recent candles table (robust)
+    st.subheader(f"Last {len(df)} Daily Candles")
+    try:
+        tbl = df.copy()
+        if "timestamp" not in tbl.columns and tbl.index.name == "timestamp":
+            tbl = tbl.reset_index()
+        if getattr(tbl["timestamp"].dt, "tz", None) is not None:
+            try:
+                tbl["timestamp"] = tbl["timestamp"].dt.tz_convert(None)
+            except Exception:
+                tbl["timestamp"] = tbl["timestamp"].dt.tz_localize(None)
+        for c in ["quote_volume"]:
+            if c not in tbl.columns:
+                tbl[c] = np.nan
+        cols = [c for c in ["timestamp","open","high","low","close","volume","quote_volume"] if c in tbl.columns]
+        st.dataframe(tbl[cols], hide_index=True, use_container_width=True)
+    except Exception as e:
+        st.warning(f"Could not render candles table ({e}).")
 
-    st.dataframe(
-        tbl[["timestamp", "open", "high", "low", "close", "volume", "quote_volume"]],
-        hide_index=True,
-        use_container_width=True,
-    )
-
-    # 7. Source Info
     st.divider()
     st.caption(
         "Data source: CoinDesk Index (cc) API via 'cadli' market • "
-        f"Provider: {provider or 'CoinDesk cc'} • "
-        f"Rows: {len(df)} (latest first)"
+        f"Provider: {provider or 'CoinDesk cc'} • Rows: {len(df)} (latest first)"
     )
-    
-    

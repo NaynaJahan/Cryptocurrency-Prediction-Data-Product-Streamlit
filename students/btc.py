@@ -47,7 +47,7 @@ def fetch_coingecko_ohlc(days: int = 365, vs="usd", demo_key: str = "") -> pd.Da
         "low":   df["low"].resample("1D").min(),
         "close": df["close"].resample("1D").last()
     })
-    daily["volume"] = np.nan         
+    daily["volume"] = np.nan
     daily["quote_volume"] = np.nan
     return daily.dropna(how="all")
 
@@ -89,16 +89,19 @@ def _today_metrics(df: pd.DataFrame):
         st.info("No recent OHLC rows available.")
         return None
     row = last.iloc[0]
-    date_utc = last.index[0].date().isoformat()
+    date_utc = (last.index[0] if isinstance(last.index[0], pd.Timestamp) else pd.to_datetime(last.index[0])).date().isoformat()
     c = st.columns(5)
     c[0].metric("Date (UTC)", date_utc)
     c[1].metric("Open",  f"${float(row['open']):,.6f}")
     c[2].metric("High",  f"${float(row['high']):,.6f}")
     c[3].metric("Low",   f"${float(row['low']):,.6f}")
     c[4].metric("Close", f"${float(row['close']):,.6f}")
-    vol = row.get("volume", np.nan)
+    vol  = row.get("volume", np.nan)
     qvol = row.get("quote_volume", np.nan)
-    st.caption(f"Volume: {vol:,.0f} • Quote Volume: {qvol:,.0f}" if pd.notna(vol) or pd.notna(qvol) else "Volume data not available for this provider.")
+    if pd.notna(vol) or pd.notna(qvol):
+        st.caption(f"Volume: {vol if pd.isna(vol) else int(vol):,} • Quote Volume: {qvol if pd.isna(qvol) else int(qvol):,}")
+    else:
+        st.caption("Volume data not available for this provider.")
     return float(row["close"])
 
 def _close_line_chart(df: pd.DataFrame, title: str):
@@ -110,14 +113,26 @@ def _close_line_chart(df: pd.DataFrame, title: str):
 
 def _candles_table(df: pd.DataFrame):
     tbl = df.copy().reset_index().rename(columns={"time":"timestamp"})
-    tbl["timestamp"] = pd.to_datetime(tbl["timestamp"]).dt.strftime("%Y-%m-%d 00:00:00")
-    cols = ["timestamp","open","high","low","close","volume","quote_volume"]
-    for c in cols:
+    if "timestamp" not in tbl.columns:
+        tbl["timestamp"] = pd.Timestamp.utcnow().tz_localize("UTC")
+    # ensure columns exist
+    for c in ["open","high","low","close","volume","quote_volume"]:
         if c not in tbl.columns:
             tbl[c] = np.nan
+    # show naive timestamps
+    tbl["timestamp"] = pd.to_datetime(tbl["timestamp"])
+    if getattr(tbl["timestamp"].dt, "tz", None) is not None:
+        try:
+            tbl["timestamp"] = tbl["timestamp"].dt.tz_convert(None)
+        except Exception:
+            tbl["timestamp"] = tbl["timestamp"].dt.tz_localize(None)
+    cols = ["timestamp","open","high","low","close","volume","quote_volume"]
     tbl = tbl[cols].sort_values("timestamp", ascending=False)
     st.subheader("Last 365 daily candles")
-    st.dataframe(tbl, use_container_width=True, hide_index=True)
+    try:
+        st.dataframe(tbl, use_container_width=True, hide_index=True)
+    except Exception as e:
+        st.warning(f"Could not render candles table ({e}).")
 
 def _forecast_card(pred: Dict[str, Any], last_close: float):
     payload = pred.get("json", {})
@@ -175,6 +190,7 @@ def render_tab(api_url: str, provider: str, days: int, cg_demo_key: str, refresh
 
     _close_line_chart(df, title="Close price — time series")
 
+    base = _api_base(api_url)
     if base:
         pred = predict_nextday_high(base)
         if pred:

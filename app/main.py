@@ -1,5 +1,6 @@
 # app/main.py
 import os, sys
+
 # make the repo root importable so we can import "students"
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if PROJECT_ROOT not in sys.path:
@@ -22,10 +23,14 @@ st.title("Crypto Next-Day HIGH Prediction Predictor App")
 # Sidebar: global options + per-student FastAPI URLs
 st.sidebar.header("Global Options")
 
+# ---- Provider select: default to CoinGecko ----
+provider_options = ["Kraken (no key)", "CoinGecko (demo key optional)"]
+default_provider = "CoinGecko (demo key optional)"
 provider = st.sidebar.selectbox(
     "OHLC Data Provider",
-    ["Kraken (no key)", "CoinGecko (demo key optional)"],
-    index=0
+    provider_options,
+    index=provider_options.index(default_provider),
+    key="provider_select_v2"  # new key so the new default is applied
 )
 
 days = st.sidebar.select_slider(
@@ -41,13 +46,15 @@ cg_demo_key = st.sidebar.text_input(
 
 st.sidebar.markdown("---")
 st.sidebar.header("Student API Endpoints")
+
+# You: ETH (pre-filled with your Render URL)
 eth_api_default = os.getenv(
     "ETH_API_URL",
     "https://advmla-finalast-25238736-latest.onrender.com"
 )
 eth_api = st.sidebar.text_input("ETH FastAPI", value=eth_api_default)
 
-# Teammates leave blank by default; they’ll fill their own
+# Teammates (defaults can be changed as they share their URLs)
 btc_api = st.sidebar.text_input("BTC FastAPI", value=os.getenv("BTC_API_URL", "https://aml-at3-fastapi-btc.onrender.com"))
 xrp_api = st.sidebar.text_input("XRP FastAPI", value=os.getenv("XRP_API_URL", "https://three6120-at3-api-muhammad-iqbal-latest.onrender.com"))
 sol_api = st.sidebar.text_input("SOL FastAPI", value=os.getenv("SOL_API_URL", "https://aml-at3-group24-experiments.onrender.com"))
