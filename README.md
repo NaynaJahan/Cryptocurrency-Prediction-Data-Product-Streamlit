@@ -6,6 +6,11 @@ An interactive web app for crypto-curious users to:
 - Browse historical OHLC for four tokens (BTC, ETH, XRP, SOL) via free public APIs, and
 - Call each student’s FastAPI service to get a next-day HIGH (USD) prediction for their token.
 
+The repository of the experimentations of trained models that will be loaded by the FastAPI app can be found here: [Cryptocurrency-Prediction-Data-Product-Experiments](https://github.com/NaynaJahan/Cryptocurrency-Prediction-Data-Product-Experiments)
+
+The repository for the FastAPI model endpoints for the Cryptocurrency Prediction can be found here: [Cryptocurrency-Prediction-API
+Public](https://github.com/NaynaJahan/Cryptocurrency-Prediction-API)
+
 ----
 
 ## Repository Structure
